@@ -1,0 +1,24 @@
+Gold TSV -> JSONL conversion report
+
+Raw dev dir: /Users/lilyluo/Downloads/nlp-final-project-group2/data/raw/dev (20 .txt files)
+Raw test dir: /Users/lilyluo/Downloads/nlp-final-project-group2/data/raw/test (6 .txt files)
+
+## DEV (gold_standard_dev.tsv)
+  input_rows: 178
+  dropped_duplicate_within_doc: 0
+  dropped_not_2_to_4_tokens (unigrams, >4 words, etc.): 19
+  retained_terms (sum over docs): 159
+
+## TEST (gold_standard_test.tsv)
+  input_rows: 48
+  dropped_duplicate_within_doc: 0
+  dropped_not_2_to_4_tokens (unigrams, >4 words, etc.): 8
+  retained_terms (sum over docs): 40
+
+Note: token count = whitespace-separated words (e.g. COBE, WMAP dropped as 1 token).
+
+Wrote:
+  data/splits/dev_ids.txt
+  data/splits/test_ids.txt
+  data/annotations/gold_terms_dev.jsonl
+  data/annotations/gold_terms_test.jsonl

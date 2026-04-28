@@ -1,0 +1,4 @@
+min_freq: 2
+window_size: 5
+min_len: 2
+max_len: 4

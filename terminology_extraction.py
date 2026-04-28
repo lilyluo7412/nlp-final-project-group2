@@ -139,11 +139,11 @@ MIN_SPAN_WORDS = 2
 MAX_SPAN_WORDS = 4
 
 # Minimum times a phrase must appear in the **whole corpus** to pass filtering (1 = off).
-MIN_GLOBAL_FREQ = 1
+MIN_GLOBAL_FREQ = 2
 MIN_TOKEN_LEN = 2
 
 # Default text file: place your textbook pages here
-CORPUS_FILE = "corpus.txt"
+CORPUS_FILE = "yale_development_corpus.txt"
 
 # Evaluation and reporting
 K_DEFAULTS = (10, 20, 50)
@@ -319,41 +319,25 @@ def tokenize_sentences(text: str) -> list[str]:
     return [s.strip() for s in sent_tokenize(text) if s.strip()]
 
 
-# --- POS sets for exact spans: compound NN | (MOD)* (NOUN)+ -------------------
+# --- POS sets for exact spans: (JJ)*(NN)+, length 2-4 -------------------------
 
 ADJ_TAGS = frozenset({"JJ", "JJR", "JJS"})
-NOUN_TAGS = frozenset({"NN", "NNS", "NNP", "NNPS", "FW"})
-# Modifiers before a noun: adjectives, some adverbs (near/far), participles used as modifiers.
-# RB/RBR/RBS: e.g. "far side" (RB + NN) when tagger returns RB, not IN.
-MOD_PREFIX_TAGS = ADJ_TAGS | {"RB", "RBR", "RBS", "VBN"}
-
-
-def _span_contains_verbal(tags: list[str]) -> bool:
-    """Block 'surface environment influences' — if *influences* is VBZ, drop the span."""
-    return any(t in VERB_INSIDE_SPAN_BAD for t in tags)
+NOUN_TAGS = frozenset({"NN", "NNS", "NNP", "NNPS"})
 
 
 def _valid_np_span_pos(tags: list[str], min_w: int, max_w: int) -> bool:
     """
-    True if tags describe a 2–4 word NP-like span:
-    - 2+ consecutive nouns (noun + noun, incl. 'impact crater', 'space telescope')
-    - or (optional MOD)* + (NOUN)+ with at least one noun and length in [min_w, max_w]
-    (covers JJ+NN, JJ+JJ+NN, RB+JJ+NN, hyphenated 'ground-based' as one JJ token, etc.)
+    True if tags match (JJ)*(NN)+ and length in [min_w, max_w].
     """
     w = len(tags)
     if w < min_w or w > max_w:
         return False
-    if all(t in NOUN_TAGS for t in tags):
-        return True
-    for k in range(0, w):
-        if k > 0 and not all(tags[j] in MOD_PREFIX_TAGS for j in range(k)):
+    for split_idx in range(0, w):
+        if split_idx > 0 and not all(t in ADJ_TAGS for t in tags[:split_idx]):
             continue
-        rest = w - k
-        if rest < 1:
-            continue
-        if not all(tags[j] in NOUN_TAGS for j in range(k, w)):
-            continue
-        return True
+        noun_part = tags[split_idx:]
+        if noun_part and all(t in NOUN_TAGS for t in noun_part):
+            return True
     return False
 
 
@@ -377,10 +361,7 @@ def extract_exact_spans_from_sentence(
     min_w: int = MIN_SPAN_WORDS,
     max_w: int = MAX_SPAN_WORDS,
 ) -> list[str]:
-    """
-    All exact 2–4 word substrings of word_tokenize(sentence) whose POS window matches
-    (Adj|RB|VBN)* (Noun)+ or (Noun){2+}. No made-up text — only token joins.
-    """
+    """Extract contiguous 2-4 token spans matching (JJ)*(NN)+."""
     words = word_tokenize(sentence)
     if len(words) < min_w:
         return []
@@ -389,23 +370,9 @@ def extract_exact_spans_from_sentence(
     n_tok = len(words)
     out: list[str] = []
     for i in range(n_tok):
-        t0 = tags[i]
-        if t0 in VERB_START_TAGS:
-            continue
-        w0 = _clean_tok(words[i]).lower()
-        if w0 in BAD_SPAN_START_WORDS:
-            continue
         for ln in range(min_w, min(max_w, n_tok - i) + 1):
             tseg = tags[i : i + ln]
-            ok = _valid_np_span_pos(tseg, min_w, max_w)
-            # e.g. "near side" / "far side" are often IN/RP + NN — keep exact two-word text
-            if not ok and ln == 2:
-                w0 = _clean_tok(words[i]).lower()
-                if w0 in ("near", "far") and tags[i + 1] in NOUN_TAGS:
-                    ok = True
-            if ok and _span_contains_verbal(tseg):
-                ok = False
-            if not ok:
+            if not _valid_np_span_pos(tseg, min_w, max_w):
                 continue
             p = _phrase_from_window(words, i, ln)
             if p:
@@ -570,10 +537,10 @@ def extract_candidate_phrases(
 ]:
     """
     Returns:
-        per_sentence_final: per-sentence phrase lists (after base + quality filter)
-        unique_final: unique phrases, first-seen order (after both filters)
+        per_sentence_final: per-sentence phrase lists after filtering
+        unique_final: unique phrases, first-seen order
         raw_counts, all_raw_mentions, unique_raw: raw extraction stats
-        n_unique_before_quality: unique count after base filter only
+        n_unique_before_quality: compatibility field (same as len(unique_final))
     """
     text = preprocess_text(text)
     stops = stopwords if stopwords is not None else get_stopwords()
@@ -618,9 +585,8 @@ def extract_candidate_phrases(
                 unique_before_quality.append(p)
 
     n_unique_before_quality = len(unique_before_quality)
-    unique_final = apply_quality_filter(unique_before_quality)
-    keep = set(unique_final)
-    per_sentence_final = [[p for p in s if p in keep] for s in per_sentence_filtered]
+    unique_final = unique_before_quality
+    per_sentence_final = per_sentence_filtered
 
     return (
         per_sentence_final,
@@ -732,9 +698,34 @@ def compute_cooccurrence(
     text = preprocess_text(text)
     tokens: list[str] = []
     for sent in tokenize_sentences(text):
-        tokens.extend(word_tokenize(sent))
+        tokens.extend(
+            [
+                preprocess_text(_clean_tok(tok))
+                for tok in word_tokenize(sent)
+                if preprocess_text(_clean_tok(tok))
+            ]
+        )
     cooc = build_cooccurrence(tokens, window_size=window_size)
-    raw_scores = {p: float(cooccurrence_phrase_score(p, cooc)) for p in candidates}
+    unigram_counts = Counter(tokens)
+    total_tokens = len(tokens)
+    total_windows = max(1, len(tokens) - max(2, window_size) + 1)
+
+    def avg_phrase_pmi(phrase: str) -> float:
+        parts = phrase.split()
+        if len(parts) < 2 or total_tokens == 0:
+            return 0.0
+        pmis: list[float] = []
+        for i in range(len(parts)):
+            for j in range(i + 1, len(parts)):
+                a, b = parts[i], parts[j]
+                pair = (a, b) if a <= b else (b, a)
+                p_xy = (cooc.get(pair, 0) + 1.0) / (total_windows + 1.0)
+                p_x = (unigram_counts.get(a, 0) + 1.0) / (total_tokens + 1.0)
+                p_y = (unigram_counts.get(b, 0) + 1.0) / (total_tokens + 1.0)
+                pmis.append(float(np.log2(p_xy / (p_x * p_y))))
+        return float(sum(pmis) / len(pmis)) if pmis else 0.0
+
+    raw_scores = {p: avg_phrase_pmi(p) for p in candidates}
     return raw_scores, rank_by_scores(raw_scores)
 
 
@@ -860,6 +851,30 @@ def precision_at_k(
     return evaluate_precision_at_k(
         ranked_terms, gold_terms, ks=(k,), use_lemmatized_match=use_lemmatized_match
     )[k]
+
+
+def evaluate_prf_at_k(
+    ranked_terms: Sequence[str],
+    gold_terms: Iterable[str],
+    ks: Sequence[int] = K_DEFAULTS,
+    *,
+    use_lemmatized_match: bool = True,
+) -> dict[int, dict[str, float]]:
+    if use_lemmatized_match:
+        norm = normalize_term_for_eval_noun_lemma
+    else:
+        norm = normalize_term_for_eval_raw
+    gold = {norm(g) for g in gold_terms if norm(g)}
+    n_gold = max(1, len(gold))
+    out: dict[int, dict[str, float]] = {}
+    for k in ks:
+        topk_norm = {norm(t) for t in ranked_terms[:k] if norm(t)}
+        hits = len(topk_norm & gold)
+        precision = hits / float(k) if k > 0 else 0.0
+        recall = hits / float(n_gold)
+        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+        out[k] = {"precision": precision, "recall": recall, "f1": f1}
+    return out
 
 
 # --- Pipeline & reporting -----------------------------------------------------
@@ -1134,6 +1149,9 @@ def write_result_files(
     save_text(out_dir / "results_tfidf.txt", "\n".join(f"{i+1}\t{p}" for i, p in enumerate(tfidf_ranked)) + "\n")
     save_text(out_dir / "results_cooccurrence.txt", "\n".join(f"{i+1}\t{p}" for i, p in enumerate(cooc_ranked)) + "\n")
 
+    eval_t = evaluate_prf_at_k(tfidf_ranked, gold, ks=ks, use_lemmatized_match=True)
+    eval_c = evaluate_prf_at_k(cooc_ranked, gold, ks=ks, use_lemmatized_match=True)
+
     report_lines: list[str] = [
         "Terminology extraction — results",
         "",
@@ -1141,11 +1159,23 @@ def write_result_files(
         "",
         format_top_k_report(tfidf_ranked, cooc_ranked, ks=ks),
         "",
+        "=== Evaluation (normalized match): Precision/Recall/F1 @k ===",
+        "Method          k    Precision    Recall    F1",
+    ]
+    for method, ev in (("TF-IDF", eval_t), ("Co-occurrence", eval_c)):
+        for k in ks:
+            report_lines.append(
+                f"{method:<14} {k:<4} {ev[k]['precision']:<11.3f} {ev[k]['recall']:<8.3f} {ev[k]['f1']:.3f}"
+            )
+    report_lines.extend(
+        [
+            "",
         "=== Evaluation: raw vs normalized (lemmatize) ===",
         format_dual_evaluation_table(tfidf_ranked, cooc_ranked, gold, ks=ks),
         "",
         "=== Example errors @10 (lemma-normalized) ===",
-    ]
+        ]
+    )
     p1, g1 = error_analysis(tfidf_ranked, gold, k=10, use_lemmatized_match=True)
     p2, g2 = error_analysis(cooc_ranked, gold, k=10, use_lemmatized_match=True)
     report_lines.append("TF-IDF — top-10 predicted not in gold (normalized):")
@@ -1178,118 +1208,11 @@ observe gravitational waves and black holes. The interstellar medium is cold.
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Astrophysics terminology extraction (TF-IDF + co-occurrence).")
-    parser.add_argument(
-        "corpus",
-        nargs="?",
-        default=None,
-        help=f"Path to plain-text corpus (default: {CORPUS_FILE} next to this script, if present; else short demo).",
-    )
-    args = parser.parse_args()
-    ensure_nltk_data()
-    script_dir = Path(__file__).resolve().parent
-    if args.corpus:
-        corpus_path = Path(args.corpus)
-    else:
-        default_p = script_dir / CORPUS_FILE
-        corpus_path = default_p if default_p.is_file() else None
+    from src.run_pipeline import main as pipeline_main
 
-    if corpus_path and corpus_path.is_file():
-        text = load_corpus_text(corpus_path)
-        print(f"Loaded corpus: {corpus_path} ({len(text)} characters)\n")
-    else:
-        text = EXAMPLE_PARAGRAPH.strip()
-        if corpus_path:
-            print(f"Note: file not found: {corpus_path} — using built-in example paragraph.\n")
-        else:
-            print(f"Note: no {CORPUS_FILE} found — using built-in example paragraph. Add {script_dir / CORPUS_FILE} for your pages.\n")
-
-    out = run_pipeline(text)
-    raw_counts: Counter[str] = out["raw_counts"]
-    unique_raw: list[str] = out["unique_raw"]
-    all_raw: list[str] = out["all_raw_mentions"]
-    unique_f = out["unique_candidates"]
-    n_before_q = int(out["n_unique_before_quality"])
-
-    print("=== Candidate statistics ===")
-    print("Total raw exact-span mentions (before filter):", len(all_raw))
-    print("Number of unique raw candidates:", len(unique_raw))
-    print("Unique after base (POS/stop/verb) filter:", n_before_q)
-    print("Unique after quality filter:             ", len(unique_f))
-    print()
-
-    print("All raw candidate phrase mentions (before filter), corpus order — full list in candidates_all_raw.txt")
-    if len(all_raw) <= MAX_PRINT_RAW_LINES:
-        for p in all_raw:
-            print(p)
-    else:
-        print(f"  (Console suppressed: {len(all_raw)} lines; open candidates_all_raw.txt.)")
-    print()
-
-    print("First 50 unique raw candidates (first-seen order):")
-    for p in unique_raw[:50]:
-        print(f"  {p}")
-    if len(unique_raw) > 50:
-        print(f"  ... and {len(unique_raw) - 50} more")
-    print()
-
-    print("First 50 unique filtered candidates (after quality pass):")
-    for p in unique_f[:50]:
-        print(f"  {p}")
-    if len(unique_f) > 50:
-        print(f"  ... and {len(unique_f) - 50} more")
-    print()
-    print("All final candidate phrases (after quality filter):")
-    for i, p in enumerate(unique_f, 1):
-        print(f"  {i:3d}. {p}")
-    print()
-
-    tfidf_ranked = out["tfidf_ranked"]
-    cooc_ranked = out["cooccurrence_ranked"]
-    gold = GOLD_TERMS
-
-    p_raw_t = evaluate_precision_at_k(tfidf_ranked, gold, ks=K_DEFAULTS, use_lemmatized_match=False)
-    p_raw_c = evaluate_precision_at_k(cooc_ranked, gold, ks=K_DEFAULTS, use_lemmatized_match=False)
-    p_nm_t = evaluate_precision_at_k(tfidf_ranked, gold, ks=K_DEFAULTS, use_lemmatized_match=True)
-    p_nm_c = evaluate_precision_at_k(cooc_ranked, gold, ks=K_DEFAULTS, use_lemmatized_match=True)
-
-    print("=== Evaluation (P@k) — original (surface) ===")
-    print(format_paper_precision_table("", p_raw_t, p_raw_c, K_DEFAULTS))
-    print()
-    print("=== Evaluation (P@k) — normalized (noun lemmatization) ===")
-    print(format_paper_precision_table("", p_nm_t, p_nm_c, K_DEFAULTS))
-    print()
-    print(format_top10_only(tfidf_ranked, cooc_ranked))
-    print()
-    print(format_top_k_report(tfidf_ranked, cooc_ranked))
-    print("Ranked list lengths — TF-IDF:", len(tfidf_ranked), " Co-occurrence:", len(cooc_ranked))
-    print()
-
-    print("=== Full evaluation table (4 rows) ===")
-    print(format_dual_evaluation_table(tfidf_ranked, cooc_ranked, gold))
-    print()
-
-    p1, g1 = error_analysis(tfidf_ranked, gold, k=10, use_lemmatized_match=True)
-    print("Error analysis @10 (noun-lemma match) — TF-IDF")
-    print("  Incorrect (in top-10, not in gold), examples:", p1)
-    print("  Missed gold (not in top-10), examples:          ", g1)
-    p2, g2 = error_analysis(cooc_ranked, gold, k=10, use_lemmatized_match=True)
-    print("Error analysis @10 — Co-occurrence")
-    print("  Incorrect, examples: ", p2)
-    print("  Missed gold, examples:", g2)
-    print()
-
-    write_result_files(script_dir, tfidf_ranked, cooc_ranked, gold)
-    save_text(script_dir / "candidates_all_raw.txt", "\n".join(all_raw) + "\n")
-    final_txt = build_final_results_text(
-        n_before_q, len(unique_f), unique_f, tfidf_ranked, cooc_ranked, gold, ks=K_DEFAULTS
-    )
-    save_text(script_dir / "final_results.txt", final_txt)
-    print(
-        f"Wrote {script_dir / 'candidates_all_raw.txt'}, {script_dir / 'results_tfidf.txt'}, "
-        f"{script_dir / 'results_cooccurrence.txt'}, {script_dir / 'results.txt'}, "
-        f"{script_dir / 'final_results.txt'}"
-    )
+    # Keep this file as a compatibility entrypoint.
+    # Frozen project design is implemented in src/run_pipeline.py.
+    pipeline_main()
 
 
 if __name__ == "__main__":
