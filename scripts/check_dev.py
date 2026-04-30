@@ -1,4 +1,4 @@
-import os, csv
+import os, csv, re
 
 missing = []
 found = []
@@ -18,7 +18,7 @@ with open('data/gold_standard/gold_standard_dev.tsv') as f:
             continue
         with open(raw_file, encoding='utf-8', errors='ignore') as rf:
             content = rf.read().lower()
-        if term_lower in content:
+        if re.search(r'\b' + re.escape(term_lower) + r'\b', content):
             found.append((doc_id, term))
         else:
             missing.append((doc_id, term))

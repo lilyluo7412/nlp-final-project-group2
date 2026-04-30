@@ -35,17 +35,14 @@ def normalize_text(text: str) -> str:
     text = text.replace("\u2018", "'").replace("\u2019", "'")
     return _WS_RE.sub(" ", text.strip())
 
-
-def clean_token(token: str) -> str:
-    return re.sub(r"^['\"]+|['\"]+$", "", token)
-
-
 def normalize_term(term: str) -> str:
+    from nltk.stem import WordNetLemmatizer
+    lem = WordNetLemmatizer()
     toks: list[str] = []
     for t in term.split():
         s = _PUNCT_STRIP.sub("", t.lower())
         if s:
-            toks.append(s)
+            toks.append(lem.lemmatize(s, pos="n"))
     return " ".join(toks)
 
 
@@ -53,6 +50,9 @@ def tokenize_and_tag(text: str) -> list[list[tuple[str, str]]]:
     ensure_nltk_data()
     out: list[list[tuple[str, str]]] = []
     for sent in sent_tokenize(text):
+    # skip timestamp lines and very short header sentences
+        if re.search(r'\[\d{2}:\d{2}:\d{2}\]', sent):
+            continue
         tokens = word_tokenize(sent)
         if not tokens:
             continue

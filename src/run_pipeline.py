@@ -5,7 +5,7 @@ import csv
 import json
 from pathlib import Path
 
-from .candidate_extraction import build_doc_candidate_counts, extract_candidates_from_tagged_sentences
+from .candidate_extraction import build_doc_candidate_counts, extract_candidates_from_tagged_sentences, extract_candidates_per_sentence
 from .evaluation import evaluate_precision, load_gold_jsonl
 from .preprocessing import load_documents, tokenize_and_tag
 from .scoring_cooccurrence import score_cooccurrence
@@ -52,23 +52,27 @@ def run(args: argparse.Namespace) -> None:
     test_set = {d: docs[d] for d in test_ids if d in docs}
 
     # Candidate extraction on all docs in each split (no unigrams; strict 2-4).
-    def build_counts(split_docs: dict[str, str]) -> dict[str, dict[str, int]]:
+    def build_counts(split_docs: dict[str, str]):
         extracted: dict[str, list[str]] = {}
+        extracted_sent: dict[str, list[list[str]]] = {}
         for doc_id, text in split_docs.items():
             tagged = tokenize_and_tag(text)
             extracted[doc_id] = extract_candidates_from_tagged_sentences(
                 tagged, min_len=min_len, max_len=max_len
             )
-        return build_doc_candidate_counts(extracted, min_freq=min_freq)
+            extracted_sent[doc_id] = extract_candidates_per_sentence(
+                tagged, min_len=min_len, max_len=max_len
+            )
+        return build_doc_candidate_counts(extracted, min_freq=min_freq), extracted_sent
 
-    dev_counts = build_counts(dev_set)
-    test_counts = build_counts(test_set)
+    dev_counts, dev_sent = build_counts(dev_set)
+    test_counts, test_sent = build_counts(test_set)
 
     # "Tuning happens on dev only": we record dev metrics only.
     dev_gold = load_gold_jsonl(Path(args.gold_dev))
     dev_gold_terms = set().union(*[dev_gold.get(doc_id, set()) for doc_id in dev_counts])
     dev_tfidf_ranked = score_tfidf(dev_counts)
-    dev_cooc_ranked = score_cooccurrence(dev_counts, window_size=window_size)
+    dev_cooc_ranked = score_cooccurrence(dev_sent, window_size=window_size)
     dev_tfidf_terms = [t for t, _ in dev_tfidf_ranked]
     dev_cooc_terms = [t for t, _ in dev_cooc_ranked]
     dev_metrics = {
@@ -92,7 +96,7 @@ def run(args: argparse.Namespace) -> None:
     test_gold = load_gold_jsonl(Path(args.gold_test))
     test_gold_terms = set().union(*[test_gold.get(doc_id, set()) for doc_id in test_counts])
     test_tfidf_ranked = score_tfidf(test_counts)
-    test_cooc_ranked = score_cooccurrence(test_counts, window_size=window_size)
+    test_cooc_ranked = score_cooccurrence(test_sent, window_size=window_size)
     test_tfidf_terms = [t for t, _ in test_tfidf_ranked]
     test_cooc_terms = [t for t, _ in test_cooc_ranked]
     test_metrics_tfidf = evaluate_precision(test_tfidf_terms, test_gold_terms)

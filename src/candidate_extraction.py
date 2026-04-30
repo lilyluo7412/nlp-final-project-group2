@@ -2,13 +2,18 @@ from __future__ import annotations
 
 from collections import Counter
 
-from .preprocessing import clean_token, normalize_term
+from .preprocessing import normalize_term
 
 ADJ_TAGS = {"JJ", "JJR", "JJS"}
 NOUN_TAGS = {"NN", "NNS", "NNP", "NNPS"}
 
+BAD_SPAN_START_WORDS = frozenset({
+    "much", "own", "little", "same", "whole", "such",
+})
 
 def _matches_pattern(tags: list[str], min_len: int, max_len: int) -> bool:
+    if all(t in {"NNP", "NNPS"} for t in tags):
+        return False
     n = len(tags)
     if n < min_len or n > max_len:
         return False
@@ -20,6 +25,34 @@ def _matches_pattern(tags: list[str], min_len: int, max_len: int) -> bool:
             return True
     return False
 
+def extract_candidates_per_sentence(
+    tagged_sentences: list[list[tuple[str, str]]],
+    min_len: int = 2,
+    max_len: int = 4,
+) -> list[list[str]]:
+    """Returns candidates grouped by sentence (used for co-occurrence scoring)."""
+    per_sentence: list[list[str]] = []
+    for tagged in tagged_sentences:
+        words = [w for w, _ in tagged]
+        tags = [t for _, t in tagged]
+        n = len(words)
+        sent_candidates: list[str] = []
+        for i in range(n):
+            for ln in range(min_len, min(max_len, n - i) + 1):
+                tseg = tags[i : i + ln]
+                if not _matches_pattern(tseg, min_len=min_len, max_len=max_len):
+                    continue
+                # skip spans starting with bad words
+                if words[i].lower() in BAD_SPAN_START_WORDS:
+                    continue
+                span = [normalize_term(x) for x in words[i : i + ln]]
+                span = [x for x in span if x]
+                if len(span) != ln:
+                    continue
+                sent_candidates.append(" ".join(span))
+        if sent_candidates:
+            per_sentence.append(sent_candidates)
+    return per_sentence
 
 def extract_candidates_from_tagged_sentences(
     tagged_sentences: list[list[tuple[str, str]]],
@@ -36,7 +69,10 @@ def extract_candidates_from_tagged_sentences(
                 tseg = tags[i : i + ln]
                 if not _matches_pattern(tseg, min_len=min_len, max_len=max_len):
                     continue
-                span = [normalize_term(clean_token(x)) for x in words[i : i + ln]]
+                # skip spans starting with bad words
+                if words[i].lower() in BAD_SPAN_START_WORDS:
+                    continue
+                span = [normalize_term(x) for x in words[i : i + ln]]
                 span = [x for x in span if x]
                 if len(span) != ln:
                     continue
