@@ -9,6 +9,7 @@ from .candidate_extraction import build_doc_candidate_counts, extract_candidates
 from .evaluation import evaluate_precision, load_gold_jsonl
 from .preprocessing import load_documents, tokenize_and_tag
 from .scoring_cooccurrence import score_cooccurrence
+from .scoring_pmi import score_pmi
 from .scoring_tfidf import score_tfidf
 
 
@@ -27,13 +28,14 @@ def _write_ranked_csv(path: Path, ranked: list[tuple[str, float]]) -> None:
             w.writerow([i, term, f"{score:.6f}"])
 
 
-def _write_eval_csv(path: Path, tfidf_metrics: dict[str, float], cooc_metrics: dict[str, float]) -> None:
+def _write_eval_csv(path: Path, tfidf_metrics: dict[str, float], cooc_metrics: dict[str, float], pmi_metrics: dict[str, float]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         w.writerow(["method", "P@10", "P@20", "P@50"])
         w.writerow(["tfidf", tfidf_metrics["P@10"], tfidf_metrics["P@20"], tfidf_metrics["P@50"]])
         w.writerow(["cooccurrence", cooc_metrics["P@10"], cooc_metrics["P@20"], cooc_metrics["P@50"]])
+        w.writerow(["pmi", pmi_metrics["P@10"], pmi_metrics["P@20"], pmi_metrics["P@50"]])
 
 
 def run(args: argparse.Namespace) -> None:
@@ -73,20 +75,25 @@ def run(args: argparse.Namespace) -> None:
     dev_gold_terms = set().union(*[dev_gold.get(doc_id, set()) for doc_id in dev_counts])
     dev_tfidf_ranked = score_tfidf(dev_counts)
     dev_cooc_ranked = score_cooccurrence(dev_sent, window_size=window_size)
+    dev_pmi_ranked = score_pmi(dev_sent, window_size=window_size)
     dev_tfidf_terms = [t for t, _ in dev_tfidf_ranked]
     dev_cooc_terms = [t for t, _ in dev_cooc_ranked]
+    dev_pmi_terms = [t for t, _ in dev_pmi_ranked]
     dev_metrics = {
         "tfidf": evaluate_precision(dev_tfidf_terms, dev_gold_terms),
         "cooccurrence": evaluate_precision(dev_cooc_terms, dev_gold_terms),
+        "pmi": evaluate_precision(dev_pmi_terms, dev_gold_terms),
     }
 
     Path(args.outputs_dev).mkdir(parents=True, exist_ok=True)
     _write_ranked_csv(Path(args.outputs_dev) / "tfidf_ranked_terms.csv", dev_tfidf_ranked)
     _write_ranked_csv(Path(args.outputs_dev) / "cooc_ranked_terms.csv", dev_cooc_ranked)
+    _write_ranked_csv(Path(args.outputs_dev) / "pmi_ranked_terms.csv", dev_pmi_ranked)
     _write_eval_csv(
         Path(args.outputs_dev) / "precision_at_k_dev.csv",
         dev_metrics["tfidf"],
         dev_metrics["cooccurrence"],
+        dev_metrics["pmi"],
     )
     (Path(args.outputs_dev) / "tuning_log.json").write_text(
         json.dumps({"config": config, "dev_metrics": dev_metrics}, indent=2), encoding="utf-8"
@@ -97,18 +104,23 @@ def run(args: argparse.Namespace) -> None:
     test_gold_terms = set().union(*[test_gold.get(doc_id, set()) for doc_id in test_counts])
     test_tfidf_ranked = score_tfidf(test_counts)
     test_cooc_ranked = score_cooccurrence(test_sent, window_size=window_size)
+    test_pmi_ranked = score_pmi(test_sent, window_size=window_size)
     test_tfidf_terms = [t for t, _ in test_tfidf_ranked]
     test_cooc_terms = [t for t, _ in test_cooc_ranked]
+    test_pmi_terms = [t for t, _ in test_pmi_ranked]
     test_metrics_tfidf = evaluate_precision(test_tfidf_terms, test_gold_terms)
     test_metrics_cooc = evaluate_precision(test_cooc_terms, test_gold_terms)
+    test_metrics_pmi = evaluate_precision(test_pmi_terms, test_gold_terms)
 
     Path(args.outputs_test).mkdir(parents=True, exist_ok=True)
     _write_ranked_csv(Path(args.outputs_test) / "tfidf_ranked_terms.csv", test_tfidf_ranked)
     _write_ranked_csv(Path(args.outputs_test) / "cooc_ranked_terms.csv", test_cooc_ranked)
+    _write_ranked_csv(Path(args.outputs_test) / "pmi_ranked_terms.csv", test_pmi_ranked)
     _write_eval_csv(
         Path(args.outputs_test) / "precision_at_k_test.csv",
         test_metrics_tfidf,
         test_metrics_cooc,
+        test_metrics_pmi,
     )
 
     print("Done. Outputs written to:")

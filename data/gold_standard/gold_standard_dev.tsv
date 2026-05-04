@@ -5,7 +5,6 @@ doc_01	dark energy
 doc_01	black hole
 doc_01	general relativity
 doc_01	geocentric model
-doc_01	epicycles
 doc_01	Newton's Laws
 doc_01	Kepler's Laws
 doc_01	quantum mechanics
@@ -17,15 +16,12 @@ doc_01	Astronomical Unit
 doc_01	elliptical orbit
 doc_01	gravitational constant
 doc_01	solar mass
-doc_01	cosmology
-doc_02	Exoplanets
 doc_02	solar masses
 doc_02	small angle formula
 doc_02	arc seconds
-doc_02	parsec
 doc_02	surface temperature
 doc_02	space telescope
-doc_02	light year
+doc_02	light years
 doc_03	center of mass
 doc_03	circular orbits
 doc_03	reflex motion
@@ -38,7 +34,6 @@ doc_04	dust grains
 doc_04	planetesimals
 doc_04	gas planets
 doc_04	Doppler Shift
-doc_04	redshift
 doc_04	radial velocity
 doc_04	radial velocity curve
 doc_05	New Horizons Mission
@@ -49,12 +44,10 @@ doc_06	Hubble Space Telescope
 doc_06	light curve
 doc_06	line of sight
 doc_06	transit method
-doc_06	Metallicity
 doc_07	gas giant planet
 doc_07	astrometry method
 doc_07	orbital dynamics
 doc_07	atmospheric chemistry
-doc_07	microlensing
 doc_07	Kepler Mission
 doc_07	infrared imaging
 doc_07	Space Interferometry Mission
@@ -71,9 +64,7 @@ doc_09	Event Horizon
 doc_09	special relativity
 doc_09	supermassive black holes
 doc_09	relativistic effects
-doc_09	singularity
 doc_09	naked singularity
-doc_09	wormhole
 doc_09	cosmic censorship
 doc_09	tidal force
 doc_09	rest mass
@@ -92,19 +83,15 @@ doc_11	gravitational mass
 doc_11	differential geometry
 doc_11	Planck units
 doc_12	Stellar Mass Black Holes
-doc_12	perihelion
 doc_12	invariant interval
 doc_12	proper distance
-doc_12	space-like interval
-doc_12	time-like interval
+doc_12	space-like intervals
 doc_12	precession of the perihelion
 doc_13	Kerr black hole
 doc_13	deflection of light
 doc_13	gravitational waves
 doc_14	Gravitational Lensing
 doc_14	binary pulsar
-doc_14	pulsar
-doc_14	periastron
 doc_14	radio telescope
 doc_15	Strong-Field Relativity
 doc_15	electromagnetic radiation
@@ -132,7 +119,7 @@ doc_17	scale factor
 doc_17	peculiar motion
 doc_17	expansion rate
 doc_17	Type 1 Cepheid
-doc_17	Type 2 Cepheid
+doc_17	Type 2 Cepheids
 doc_17	anthropic principle
 doc_17	speed of light
 doc_17	event horizon
@@ -140,7 +127,6 @@ doc_17	magnitude equations
 doc_18	steady state
 doc_18	initial singularity
 doc_18	lookback time
-doc_18	quasars
 doc_18	cosmic microwave background
 doc_18	hydrogen fusion
 doc_18	critical density
@@ -150,16 +136,11 @@ doc_18	age of the Universe
 doc_18	ionized hydrogen
 doc_18	radio telescopes
 doc_18	nuclear reactions
-doc_18	helium
-doc_18	megaparsec
 doc_18	gravitational force
 doc_18	island galaxies
-doc_19	Omega
 doc_19	dark matter
-doc_19	WIMPs
-doc_19	MACHOs
 doc_19	mass-to-light ratio
-doc_19	dynamical mass
+doc_19	dynamical masses
 doc_19	galaxy cluster
 doc_19	Virgo cluster
 doc_19	solar neutrinos
